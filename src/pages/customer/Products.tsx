@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { mockProducts } from '@/data/mockData';
+import { useState, useEffect } from 'react';
 import { CartItem } from '@/types/database';
 import ProductCard from '@/components/customer/ProductCard';
 import { Input } from '@/components/ui/input';
@@ -10,10 +9,31 @@ import { toast } from 'sonner';
 const Products = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [category, setCategory] = useState('all');
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
   
-  const categories = ['all', ...Array.from(new Set(mockProducts.map(p => p.category)))];
-
-  const filteredProducts = mockProducts.filter(product => {
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        const response = await fetch('http://localhost:4000/products');
+        if (!response.ok) {
+          throw new Error('Failed to fetch products');
+        }
+        const data = await response.json();
+        setProducts(data);
+      } catch (error) {
+        console.error('Error fetching products:', error);
+        toast.error('Failed to load products');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProducts();
+  }, []);
+  
+  const categories = ['all', ...Array.from(new Set(products.map(p => p.category)))];
+  
+  const filteredProducts = products.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          product.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = category === 'all' || product.category === category;
@@ -34,6 +54,14 @@ const Products = () => {
     toast.success(`${product.name} added to cart`);
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-lg">Loading products...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -51,7 +79,7 @@ const Products = () => {
             className="pl-10"
           />
         </div>
-        <Select value={category} onValueChange={setCategory}>
+        <Select onValueChange={setCategory} value={category}>
           <SelectTrigger className="w-full sm:w-48">
             <SelectValue placeholder="Category" />
           </SelectTrigger>
