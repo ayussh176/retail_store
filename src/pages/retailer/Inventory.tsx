@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { mockProducts } from '@/data/mockData';
 import { Product } from '@/types/database';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -30,13 +29,18 @@ const Inventory = () => {
   });
 
   useEffect(() => {
-    const storedProducts = localStorage.getItem('products');
-    if (storedProducts) {
-      setProducts(JSON.parse(storedProducts));
-    } else {
-      setProducts(mockProducts);
-      localStorage.setItem('products', JSON.stringify(mockProducts));
-    }
+    const fetchProducts = async () => {
+      try {
+        const res = await fetch('http://localhost:4000/products');
+        if (!res.ok) throw new Error('Failed to fetch products');
+        const data = await res.json();
+        setProducts(data);
+      } catch (e) {
+        console.error(e);
+        toast.error('Failed to load inventory');
+      }
+    };
+    fetchProducts();
   }, []);
 
   const getAutoStockStatus = (quantity: number): Product['stock_status'] => {
@@ -46,219 +50,130 @@ const Inventory = () => {
     return 'in_stock';
   };
 
-  const totalProducts = products.length;
-  const totalStock = products.reduce((sum, p) => sum + p.stock_quantity, 0);
-  const lowStockProducts = products.filter(p => {
-    const status = p.stock_status || getAutoStockStatus(p.stock_quantity);
-    return status === 'low_stock' || status === 'out_of_stock';
-  }).length;
+  const handleAddProduct = async () => {
+    try {
+      const payload = {
+        ...newProduct,
+        price: parseFloat(String(newProduct.price || 0)),
+        stock_quantity: parseInt(String(newProduct.stock_quantity || 0), 10),
+        stock_status: getAutoStockStatus(parseInt(String(newProduct.stock_quantity || 0), 10)),
+      } as any;
 
-  const getStockStatus = (product: Product) => {
-    const status = product.stock_status || getAutoStockStatus(product.stock_quantity);
-    switch (status) {
-      case 'out_of_stock':
-        return { label: 'Out of Stock', variant: 'destructive' as const, value: 'out_of_stock' };
-      case 'low_stock':
-        return { label: 'Low Stock', variant: 'destructive' as const, value: 'low_stock' };
-      case 'medium':
-        return { label: 'Medium', variant: 'secondary' as const, value: 'medium' };
-      case 'in_stock':
-        return { label: 'In Stock', variant: 'default' as const, value: 'in_stock' };
-      default:
-        return { label: 'In Stock', variant: 'default' as const, value: 'in_stock' };
+      const res = await fetch('http://localhost:4000/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error('Failed to add product');
+      const created = await res.json();
+      setProducts(prev => [...prev, created]);
+      setIsAddDialogOpen(false);
+      setNewProduct({
+        name: '', description: '', price: '', stock_quantity: '', category: '', supplier_id: 'SUP001', image_url: '/placeholder.svg'
+      });
+      toast.success('Product added');
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to add product');
     }
   };
 
-  const handleStatusChange = (productId: string, newStatus: Product['stock_status']) => {
-    const updatedProducts = products.map(p =>
-      p.product_id === productId ? { ...p, stock_status: newStatus } : p
-    );
-    setProducts(updatedProducts);
-    localStorage.setItem('products', JSON.stringify(updatedProducts));
-    toast.success('Stock status updated successfully');
-  };
-
-  const handleAddProduct = () => {
-    if (!newProduct.name || !newProduct.price || !newProduct.stock_quantity) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
-
-    const product: Product = {
-      product_id: `PROD${String(products.length + 1).padStart(3, '0')}`,
-      name: newProduct.name,
-      description: newProduct.description,
-      price: parseFloat(newProduct.price),
-      stock_quantity: parseInt(newProduct.stock_quantity),
-      category: newProduct.category,
-      supplier_id: newProduct.supplier_id,
-      image_url: newProduct.image_url,
-      created_at: new Date().toISOString().split('T')[0],
-    };
-
-    const updatedProducts = [...products, product];
-    setProducts(updatedProducts);
-    localStorage.setItem('products', JSON.stringify(updatedProducts));
-    setIsAddDialogOpen(false);
-    setNewProduct({
-      name: '',
-      description: '',
-      price: '',
-      stock_quantity: '',
-      category: '',
-      supplier_id: 'SUP001',
-      image_url: '/placeholder.svg',
-    });
-    toast.success('Product added successfully');
-  };
-
-  const handleEditProduct = () => {
+  const handleEditProduct = async () => {
     if (!editingProduct) return;
-
-    const updatedProducts = products.map(p =>
-      p.product_id === editingProduct.product_id ? editingProduct : p
-    );
-    setProducts(updatedProducts);
-    localStorage.setItem('products', JSON.stringify(updatedProducts));
-    setIsEditDialogOpen(false);
-    setEditingProduct(null);
-    toast.success('Product updated successfully');
+    try {
+      const updated = {
+        ...editingProduct,
+        stock_status: getAutoStockStatus(editingProduct.stock_quantity),
+      };
+      const res = await fetch(`http://localhost:4000/products/${editingProduct.product_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      });
+      if (!res.ok) throw new Error('Failed to update product');
+      const saved = await res.json();
+      setProducts(prev => prev.map(p => p.product_id === saved.product_id ? saved : p));
+      setIsEditDialogOpen(false);
+      setEditingProduct(null);
+      toast.success('Product updated');
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to update product');
+    }
   };
 
-  const handleDeleteProduct = (productId: string) => {
-    const updatedProducts = products.filter(p => p.product_id !== productId);
-    setProducts(updatedProducts);
-    localStorage.setItem('products', JSON.stringify(updatedProducts));
-    toast.success('Product deleted successfully');
+  const handleDeleteProduct = async (productId: string) => {
+    try {
+      const res = await fetch(`http://localhost:4000/products/${productId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete product');
+      setProducts(prev => prev.filter(p => p.product_id !== productId));
+      toast.success('Product deleted');
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to delete product');
+    }
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-start">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Inventory Management</h1>
-          <p className="text-muted-foreground">Monitor and manage product stock levels</p>
+          <h1 className="text-3xl font-bold">Inventory</h1>
+          <p className="text-muted-foreground">Manage your store products</p>
         </div>
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="flex items-center gap-2">
-              <Plus className="w-4 h-4" />
-              Add Product
+            <Button onClick={() => setIsAddDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" /> Add Product
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+          <DialogContent>
             <DialogHeader>
-              <DialogTitle>Add New Product</DialogTitle>
-              <DialogDescription>Enter the details of the new product</DialogDescription>
+              <DialogTitle>Add Product</DialogTitle>
+              <DialogDescription>Fill details to add a new product</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Product Name *</Label>
-                  <Input
-                    id="name"
-                    value={newProduct.name}
-                    onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
-                    placeholder="Enter product name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="category">Category *</Label>
-                  <Input
-                    id="category"
-                    value={newProduct.category}
-                    onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
-                    placeholder="e.g., Electronics"
-                  />
-                </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label className="text-right">Name</Label>
+                <Input className="col-span-3" value={newProduct.name} onChange={(e) => setNewProduct(p => ({...p, name: e.target.value}))} />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  value={newProduct.description}
-                  onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
-                  placeholder="Enter product description"
-                />
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label className="text-right">Description</Label>
+                <Textarea className="col-span-3" value={newProduct.description} onChange={(e) => setNewProduct(p => ({...p, description: e.target.value}))} />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="price">Price *</Label>
-                  <Input
-                    id="price"
-                    type="number"
-                    step="0.01"
-                    value={newProduct.price}
-                    onChange={(e) => setNewProduct({ ...newProduct, price: e.target.value })}
-                    placeholder="0.00"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="stock">Stock Quantity *</Label>
-                  <Input
-                    id="stock"
-                    type="number"
-                    value={newProduct.stock_quantity}
-                    onChange={(e) => setNewProduct({ ...newProduct, stock_quantity: e.target.value })}
-                    placeholder="0"
-                  />
-                </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label className="text-right">Price</Label>
+                <Input type="number" step="0.01" className="col-span-3" value={newProduct.price} onChange={(e) => setNewProduct(p => ({...p, price: e.target.value}))} />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label className="text-right">Stock Qty</Label>
+                <Input type="number" className="col-span-3" value={newProduct.stock_quantity} onChange={(e) => setNewProduct(p => ({...p, stock_quantity: e.target.value}))} />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label className="text-right">Category</Label>
+                <Input className="col-span-3" value={newProduct.category} onChange={(e) => setNewProduct(p => ({...p, category: e.target.value}))} />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label className="text-right">Image URL</Label>
+                <Input className="col-span-3" value={newProduct.image_url} onChange={(e) => setNewProduct(p => ({...p, image_url: e.target.value}))} />
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleAddProduct}>Add Product</Button>
+              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
+              <Button onClick={handleAddProduct}>Save</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Products</CardTitle>
-            <Package className="w-4 h-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalProducts}</div>
-            <p className="text-xs text-muted-foreground">Active products</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Stock</CardTitle>
-            <TrendingUp className="w-4 h-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalStock}</div>
-            <p className="text-xs text-muted-foreground">Units in inventory</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Low Stock Alerts</CardTitle>
-            <AlertTriangle className="w-4 h-4 text-destructive" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{lowStockProducts}</div>
-            <p className="text-xs text-muted-foreground">Products need restock</p>
-          </CardContent>
-        </Card>
-      </div>
-
       <Card>
         <CardHeader>
-          <CardTitle>Product Inventory</CardTitle>
+          <CardTitle className="flex items-center gap-2"><Package className="h-5 w-5" /> Products</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Product ID</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Price</TableHead>
@@ -268,71 +183,41 @@ const Inventory = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {products.map(product => {
-                const status = getStockStatus(product);
-                return (
-                  <TableRow key={product.product_id}>
-                    <TableCell className="font-mono text-sm">{product.product_id}</TableCell>
-                    <TableCell className="font-medium">{product.name}</TableCell>
-                    <TableCell>{product.category}</TableCell>
-                    <TableCell>${product.price.toFixed(2)}</TableCell>
-                    <TableCell className="font-semibold">{product.stock_quantity}</TableCell>
-                    <TableCell>
-                      <Select
-                        value={status.value}
-                        onValueChange={(value) => handleStatusChange(product.product_id, value as Product['stock_status'])}
-                      >
-                        <SelectTrigger className="w-[140px]">
-                          <SelectValue>
-                            <Badge variant={status.variant}>{status.label}</Badge>
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="out_of_stock">Out of Stock</SelectItem>
-                          <SelectItem value="low_stock">Low Stock</SelectItem>
-                          <SelectItem value="medium">Medium</SelectItem>
-                          <SelectItem value="in_stock">In Stock</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => {
-                            setEditingProduct(product);
-                            setIsEditDialogOpen(true);
-                          }}
-                        >
-                          <Pencil className="w-4 h-4" />
+              {products.map((p) => (
+                <TableRow key={p.product_id}>
+                  <TableCell className="font-medium">{p.name}</TableCell>
+                  <TableCell>{p.category}</TableCell>
+                  <TableCell>${p.price.toFixed ? p.price.toFixed(2) : Number(p.price).toFixed(2)}</TableCell>
+                  <TableCell>{p.stock_quantity}</TableCell>
+                  <TableCell>
+                    <Badge variant={p.stock_status === 'out_of_stock' ? 'destructive' : p.stock_status === 'low_stock' ? 'secondary' : 'default'}>
+                      {p.stock_status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right space-x-2">
+                    <Button variant="outline" size="icon" onClick={() => { setEditingProduct(p); setIsEditDialogOpen(true); }}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="outline" size="icon">
+                          <Trash2 className="h-4 w-4" />
                         </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="outline" size="icon">
-                              <Trash2 className="w-4 h-4 text-destructive" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete Product</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Are you sure you want to delete "{product.name}"? This action cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDeleteProduct(product.product_id)}>
-                                Delete
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete product?</AlertDialogTitle>
+                          <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleDeleteProduct(p.product_id)}>Delete</AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </CardContent>
@@ -353,29 +238,20 @@ const Inventory = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-price">Price</Label>
-                <Input
-                  id="edit-price"
-                  type="number"
-                  step="0.01"
-                  value={editingProduct.price}
+                <Input id="edit-price" type="number" step="0.01" value={editingProduct.price}
                   onChange={(e) => setEditingProduct({ ...editingProduct, price: parseFloat(e.target.value) })}
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-stock">Stock Quantity</Label>
-                <Input
-                  id="edit-stock"
-                  type="number"
-                  value={editingProduct.stock_quantity}
-                  onChange={(e) => setEditingProduct({ ...editingProduct, stock_quantity: parseInt(e.target.value) })}
+                <Input id="edit-stock" type="number" value={editingProduct.stock_quantity}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, stock_quantity: parseInt(e.target.value, 10) })}
                 />
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleEditProduct}>Save Changes</Button>
           </DialogFooter>
         </DialogContent>
