@@ -6,25 +6,72 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Package, Truck } from 'lucide-react';
 import { toast } from 'sonner';
 
+interface Order {
+  _id: string;
+  userId: string;
+  items: Array<{
+    productId: string;
+    productName: string;
+    quantity: number;
+    price: number;
+  }>;
+  totalAmount: number;
+  status: string;
+  createdAt: string;
+}
+
 const OrderManagement = () => {
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadOrders();
   }, []);
 
-  const loadOrders = () => {
-    const storedOrders = JSON.parse(localStorage.getItem('orders') || '[]');
-    setOrders(storedOrders);
+  const loadOrders = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:5000/api/orders/all', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setOrders(data);
+      }
+    } catch (error) {
+      console.error('Error loading orders:', error);
+      toast.error('Failed to load orders');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const updateOrderStatus = (orderId: string, newStatus: string) => {
-    const updatedOrders = orders.map(order => 
-      order.order_id === orderId ? { ...order, status: newStatus } : order
-    );
-    setOrders(updatedOrders);
-    localStorage.setItem('orders', JSON.stringify(updatedOrders));
-    toast.success(`Order ${orderId} marked as ${newStatus}`);
+  const updateOrderStatus = async (orderId: string, newStatus: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/orders/${orderId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+
+      if (response.ok) {
+        await loadOrders();
+        toast.success(`Order ${orderId.slice(-6)} marked as ${newStatus}`);
+      } else {
+        toast.error('Failed to update order status');
+      }
+    } catch (error) {
+      console.error('Error updating order:', error);
+      toast.error('Failed to update order status');
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -37,99 +84,92 @@ const OrderManagement = () => {
     }
   };
 
-  const totalOrders = orders.length;
-  const pendingOrders = orders.filter(o => o.status === 'pending').length;
-  const shippedOrders = orders.filter(o => o.status === 'shipped').length;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <p className="text-muted-foreground">Loading orders...</p>
+      </div>
+    );
+  }
+
+  if (orders.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+        <Package className="w-24 h-24 text-muted-foreground" />
+        <h2 className="text-2xl font-bold">No orders yet</h2>
+        <p className="text-muted-foreground">Orders will appear here when customers make purchases</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold mb-2">Order Management</h1>
-        <p className="text-muted-foreground">Process and track customer orders</p>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
-            <Package className="w-4 h-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalOrders}</div>
-            <p className="text-xs text-muted-foreground">All time orders</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Pending Orders</CardTitle>
-            <Package className="w-4 h-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{pendingOrders}</div>
-            <p className="text-xs text-muted-foreground">Awaiting processing</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Shipped Orders</CardTitle>
-            <Truck className="w-4 h-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{shippedOrders}</div>
-            <p className="text-xs text-muted-foreground">In transit</p>
-          </CardContent>
-        </Card>
+        <h1 className="text-3xl font-bold">Order Management</h1>
+        <p className="text-muted-foreground">Track and manage all customer orders</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>All Orders</CardTitle>
+          <CardTitle>Recent Orders</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Order ID</TableHead>
-                <TableHead>Date</TableHead>
                 <TableHead>Customer</TableHead>
-                <TableHead>Amount</TableHead>
+                <TableHead>Items</TableHead>
+                <TableHead>Total</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Date</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {orders.map(order => (
-                <TableRow key={order.order_id}>
-                  <TableCell className="font-mono text-sm">{order.order_id}</TableCell>
-                  <TableCell>{order.order_date}</TableCell>
-                  <TableCell>{order.customer_id}</TableCell>
-                  <TableCell className="font-semibold">${order.total_amount.toFixed(2)}</TableCell>
+              {orders.map((order) => (
+                <TableRow key={order._id}>
+                  <TableCell className="font-medium">#{order._id.slice(-6)}</TableCell>
+                  <TableCell>{order.userId.slice(-6)}</TableCell>
+                  <TableCell>{order.items.length}</TableCell>
+                  <TableCell>${order.totalAmount.toFixed(2)}</TableCell>
                   <TableCell>
                     <Badge variant={getStatusColor(order.status)}>
                       {order.status}
                     </Badge>
                   </TableCell>
+                  <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
                   <TableCell>
-                    {order.status === 'pending' && (
-                      <Button
-                        size="sm"
-                        onClick={() => updateOrderStatus(order.order_id, 'processing')}
-                      >
-                        Process
-                      </Button>
-                    )}
-                    {order.status === 'processing' && (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => updateOrderStatus(order.order_id, 'shipped')}
-                      >
-                        <Truck className="w-4 h-4 mr-2" />
-                        Ship
-                      </Button>
-                    )}
+                    <div className="flex gap-2">
+                      {order.status === 'pending' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => updateOrderStatus(order._id, 'processing')}
+                        >
+                          Process
+                        </Button>
+                      )}
+                      {order.status === 'processing' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => updateOrderStatus(order._id, 'shipped')}
+                        >
+                          <Truck className="w-4 h-4 mr-1" />
+                          Ship
+                        </Button>
+                      )}
+                      {order.status === 'shipped' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => updateOrderStatus(order._id, 'delivered')}
+                        >
+                          Mark Delivered
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
