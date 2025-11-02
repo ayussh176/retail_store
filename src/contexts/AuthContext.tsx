@@ -17,7 +17,7 @@ interface AuthContextType {
   isLoading: boolean;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType>(undefined!);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -34,43 +34,62 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password: string, role: UserRole) => {
     // Mock login - replace with Oracle SQL Plus connection
     const users = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
-    const existingUser = users.find((u: User) => u.email === email && u.role === role);
     
-    if (!existingUser) {
-      throw new Error('User not found. Please sign up first.');
+    const user = users.find((u: any) => 
+      u.email === email && 
+      u.password === password && 
+      u.role === role
+    );
+
+    if (!user) {
+      throw new Error('Invalid credentials');
     }
-    
-    setUser(existingUser);
-    localStorage.setItem('user', JSON.stringify(existingUser));
+
+    const loggedInUser = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    };
+
+    setUser(loggedInUser);
+    localStorage.setItem('user', JSON.stringify(loggedInUser));
   };
 
   const signup = async (email: string, password: string, name: string, role: UserRole) => {
-    // Mock signup - replace with Oracle SQL Plus connection
     const users = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
-    const existingUser = users.find((u: User) => u.email === email && u.role === role);
     
+    const existingUser = users.find((u: any) => u.email === email && u.role === role);
     if (existingUser) {
-      throw new Error('User already exists. Please login.');
+      throw new Error('User already exists');
     }
-    
-    const newUser: User = {
-      id: `${role}_${Date.now()}`,
+
+    const newUser = {
+      id: crypto.randomUUID(),
       email,
+      password,
       name,
       role,
     };
-    
+
     users.push(newUser);
     localStorage.setItem('registeredUsers', JSON.stringify(users));
-    
-    setUser(newUser);
-    localStorage.setItem('user', JSON.stringify(newUser));
+
+    const loggedInUser = {
+      id: newUser.id,
+      email: newUser.email,
+      name: newUser.name,
+      role: newUser.role,
+    };
+
+    setUser(loggedInUser);
+    localStorage.setItem('user', JSON.stringify(loggedInUser));
   };
 
   const logout = () => {
     setUser(null);
     localStorage.removeItem('user');
-    localStorage.removeItem('cart');
+    // Removed localStorage.removeItem('cart') - cart is now managed by backend
   };
 
   return (
