@@ -11,7 +11,11 @@
   "description": "",
   "dependencies": {
     "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "oracledb": "^6.10.0"
+  },
+  "devDependencies": {
+    "@types/dotenv": "^6.1.1"
   }
 }
