@@ -7,10 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Package, AlertTriangle, TrendingUp, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Package, Plus, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const Inventory = () => {
@@ -83,7 +82,9 @@ const Inventory = () => {
     try {
       const updated = {
         ...editingProduct,
-        stock_status: getAutoStockStatus(editingProduct.stock_quantity),
+        stock_status: getAutoStockStatus(Number(editingProduct.stock_quantity)),
+        price: Number(editingProduct.price),
+        stock_quantity: Number(editingProduct.stock_quantity),
       };
       const res = await fetch(`http://localhost:4000/products/${editingProduct.product_id}`, {
         method: 'PUT',
@@ -165,7 +166,6 @@ const Inventory = () => {
           </DialogContent>
         </Dialog>
       </div>
-
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Package className="h-5 w-5" /> Products</CardTitle>
@@ -185,13 +185,23 @@ const Inventory = () => {
             <TableBody>
               {products.map((p) => (
                 <TableRow key={p.product_id}>
-                  <TableCell className="font-medium">{p.name}</TableCell>
-                  <TableCell>{p.category}</TableCell>
-                  <TableCell>${p.price.toFixed ? p.price.toFixed(2) : Number(p.price).toFixed(2)}</TableCell>
-                  <TableCell>{p.stock_quantity}</TableCell>
+                  <TableCell className="font-medium">{p.name ?? 'N/A'}</TableCell>
+                  <TableCell>{p.category ?? 'N/A'}</TableCell>
                   <TableCell>
-                    <Badge variant={p.stock_status === 'out_of_stock' ? 'destructive' : p.stock_status === 'low_stock' ? 'secondary' : 'default'}>
-                      {p.stock_status}
+                    {p.price != null && !isNaN(Number(p.price))
+                      ? `₹${Number(p.price).toFixed(2)}`
+                      : 'N/A'}
+                  </TableCell>
+                  <TableCell>{p.stock_quantity ?? 'N/A'}</TableCell>
+                  <TableCell>
+                    <Badge variant={
+                      p.stock_status === 'out_of_stock'
+                        ? 'destructive'
+                        : p.stock_status === 'low_stock'
+                          ? 'secondary'
+                          : 'default'
+                    }>
+                      {p.stock_status ?? 'N/A'}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right space-x-2">
@@ -222,7 +232,6 @@ const Inventory = () => {
           </Table>
         </CardContent>
       </Card>
-
       {/* Edit Product Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent>
@@ -234,17 +243,28 @@ const Inventory = () => {
             <div className="grid gap-4 py-4">
               <div className="space-y-2">
                 <Label>Product Name</Label>
-                <Input value={editingProduct.name} disabled />
+                <Input value={editingProduct.name ?? ''} disabled />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-price">Price</Label>
-                <Input id="edit-price" type="number" step="0.01" value={editingProduct.price}
+                <Input
+                  id="edit-price"
+                  type="number"
+                  step="0.01"
+                  value={editingProduct.price != null && !isNaN(Number(editingProduct.price))
+                    ? Number(editingProduct.price)
+                    : ''}
                   onChange={(e) => setEditingProduct({ ...editingProduct, price: parseFloat(e.target.value) })}
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-stock">Stock Quantity</Label>
-                <Input id="edit-stock" type="number" value={editingProduct.stock_quantity}
+                <Input
+                  id="edit-stock"
+                  type="number"
+                  value={editingProduct.stock_quantity != null && !isNaN(Number(editingProduct.stock_quantity))
+                    ? Number(editingProduct.stock_quantity)
+                    : ''}
                   onChange={(e) => setEditingProduct({ ...editingProduct, stock_quantity: parseInt(e.target.value, 10) })}
                 />
               </div>
