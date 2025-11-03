@@ -70,7 +70,7 @@ The backend will run on `http://localhost:4000` (or your `.env` port).
 **Start Frontend:**
 npm run dev
 
-Frontend runs on [http://localhost:5173](http://localhost:5173) by default.
+Frontend runs on [http://localhost:8080](http://localhost:8080) by default.
 
 ---
 
