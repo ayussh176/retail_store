@@ -9,7 +9,23 @@ exports.getRetailerById = async (req, res) => {
   catch (error) { res.status(500).json({ error: error.message }); }
 };
 exports.createRetailer = async (req, res) => {
-  try { const { name, location, contact } = req.body; const [result] = await db.query('INSERT INTO retailers (name, location, contact) VALUES (?, ?, ?)', [name, location, contact]); res.status(201).json({ id: result.insertId, message: 'Retailer created' }); }
+  try {
+    const { name, location, contact } = req.body;
+    const [result] = await db.query('INSERT INTO retailers (name, location, contact) VALUES (?, ?, ?)', [name, location, contact]);
+    const retailerId = result.insertId;
+    
+    // Auto-create supplier with matching supplier_id = retailer_id
+    try {
+      await db.query('INSERT INTO suppliers (supplier_id, name, contact) VALUES (?, ?, ?)', [retailerId, name, contact]);
+    } catch (supplierError) {
+      // If supplier already exists, skip the insert (duplicate key error)
+      if (supplierError.code !== 'ER_DUP_ENTRY') {
+        throw supplierError;
+      }
+    }
+    
+    res.status(201).json({ id: retailerId, message: 'Retailer created' });
+  }
   catch (error) { res.status(500).json({ error: error.message }); }
 };
 exports.updateRetailer = async (req, res) => {
